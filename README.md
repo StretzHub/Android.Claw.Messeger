@@ -149,68 +149,81 @@ Claude Code (auf dem PC) kann über dieses Plugin:
 ### Architektur
 
 ```
-Claude Code (PC)
-    ↕ MCP über HTTP/SSE (Heimnetz)
-MCP-Server (Termux auf Android)
+Alles auf einem Android-Gerät (Termux):
+
+Claude Code (Termux)
+    ↕ stdio (MCP-Protokoll, lokaler Prozess)
+MCP-Server (Node.js, Subprocess von Claude Code)
     ↕ Baileys WebSocket
 WhatsApp Servers
-    ↕
-Dediziertes Handy (connected device)
 ```
 
-### Setup (auf dem Android-Gerät in Termux)
+Kein PC, kein Netzwerk, kein separater Server-Prozess nötig.
+
+### Setup (einmalig, auf dem Android-Gerät in Termux)
+
+#### 1. Termux & Abhängigkeiten
+
+```bash
+pkg update && pkg upgrade
+pkg install nodejs git
+```
+
+#### 2. Claude Code installieren
+
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+
+#### 3. Projekt & MCP-Dependencies
 
 ```bash
 cd Android.Claw.Messeger/mcp
 npm install
-cp .env.example .env
-# .env anpassen (Port, optionaler API_TOKEN)
-npm start
 ```
 
-Beim ersten Start erscheint ein QR-Code → mit WhatsApp scannen (**Verknüpfte Geräte**).
-
-Der Server gibt beim Start die nötige Claude Code-Konfiguration aus:
-
-```
-WhatsApp MCP-Server läuft auf Port 3001
-Claude Code Konfiguration (.mcp.json):
-  {
-    "mcpServers": {
-      "whatsapp": {
-        "type": "sse",
-        "url": "http://<Handy-IP>:3001/sse"
-      }
-    }
-  }
-Handy-IP ermitteln: ip addr | grep "inet 192"
-```
-
-### Claude Code konfigurieren (auf dem PC)
-
-IP-Adresse des Handys ermitteln (in Termux):
+#### 4. WhatsApp einmalig verbinden (QR-Code scannen)
 
 ```bash
-ip addr | grep "inet 192"
-# Beispiel: 192.168.1.42
+node src/setup.js
+# → QR-Code erscheint
+# → WhatsApp → Einstellungen → Verknüpfte Geräte → Gerät hinzufügen
+# → ✅ Session gespeichert in mcp-auth/
 ```
 
-Dann `.mcp.json` im Projektordner erstellen (Vorlage: `.mcp.json.example`):
+Dieser Schritt ist nur beim allerersten Mal nötig. Die Session bleibt gespeichert.
+
+#### 5. MCP-Konfiguration erstellen
+
+Im Projektordner (eine Ebene über `mcp/`):
+
+```bash
+cp .mcp.json.example .mcp.json
+```
+
+Die Datei sieht so aus – keine Änderungen nötig:
 
 ```json
 {
   "mcpServers": {
     "whatsapp": {
-      "type": "sse",
-      "url": "http://192.168.1.42:3001/sse"
+      "type": "stdio",
+      "command": "node",
+      "args": ["mcp/src/index.js"]
     }
   }
 }
 ```
 
-Oder in `~/.claude.json` (global für alle Projekte) unter `mcpServers` eintragen.
+#### 6. Claude Code starten
 
-Claude Code neu starten → WhatsApp-Tools sind verfügbar.
+```bash
+cd Android.Claw.Messeger
+claude
+```
+
+Claude Code startet den MCP-Server automatisch im Hintergrund.
+WhatsApp-Tools sind sofort verfügbar.
 
 ### Verfügbare Tools
 
@@ -233,31 +246,22 @@ Claude Code neu starten → WhatsApp-Tools sind verfügbar.
 
 ### Konfiguration MCP (.env)
 
+Optional – Datei `mcp/.env` anlegen:
+
 | Variable | Standard | Beschreibung |
 |----------|----------|--------------|
-| `PORT` | `3001` | HTTP-Port des MCP-Servers |
-| `API_TOKEN` | leer | Optionaler Auth-Token (empfohlen!) |
-| `LOG_LEVEL` | `info` | Log-Verbosität |
-
-### Dauerhafter Betrieb (tmux)
-
-```bash
-pkg install tmux
-tmux new -s mcp
-cd Android.Claw.Messeger/mcp && npm start
-# Strg+B, dann D zum Detach
-tmux attach -t mcp  # Wieder verbinden
-```
+| `LOG_LEVEL` | `info` | Log-Verbosität: `silent`, `info`, `warn`, `error` |
 
 ### Hinweise
 
-- **Beide Modi gleichzeitig**: Bot (`src/`) und MCP (`mcp/`) nutzen separate `auth/`-Ordner und verbinden sich als verschiedene "Linked Devices". WhatsApp erlaubt bis zu 4 verknüpfte Geräte.
-- **Nachrichten-Puffer**: `whatsapp_get_messages` zeigt nur Nachrichten, die seit dem Start des MCP-Servers eingegangen sind (kein historischer Verlauf).
-- **Heimnetz**: Der MCP-Server ist ohne Token aus dem lokalen Netzwerk erreichbar. Für Fernzugriff SSH-Tunnel oder VPN verwenden.
+- **stdio-Transport**: Claude Code startet den MCP-Server als Subprocess. Kein separater Prozess, kein Port, kein Netzwerk nötig.
+- **Einmaliges Setup**: Nach dem ersten QR-Scan läuft alles automatisch. Session bleibt in `mcp/mcp-auth/` gespeichert.
+- **Beide Modi gleichzeitig**: Bot (`src/`) und MCP (`mcp/`) nutzen separate `auth/`-Ordner → zwei verschiedene Linked Devices. WhatsApp erlaubt bis zu 4.
+- **Nachrichten-Puffer**: `whatsapp_get_messages` zeigt Nachrichten, die seit dem Start des MCP-Servers eingegangen sind.
+- **Session erneuern**: `rm -rf mcp/mcp-auth/ && node mcp/src/setup.js`
 
 ### Technologie (MCP-Plugin)
 
-- **[Model Context Protocol SDK](https://github.com/modelcontextprotocol/typescript-sdk)** – MCP Server (SSE-Transport)
+- **[Model Context Protocol SDK](https://github.com/modelcontextprotocol/typescript-sdk)** – MCP Server (stdio-Transport)
 - **[Baileys](https://github.com/WhiskeySockets/Baileys)** – WhatsApp Verbindung
-- **[Express](https://expressjs.com/)** – HTTP-Server für SSE
 - **[Zod](https://zod.dev/)** – Tool-Parameter-Validierung

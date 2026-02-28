@@ -1,8 +1,9 @@
 {
   "mcpServers": {
     "whatsapp": {
-      "type": "sse",
-      "url": "http://HANDY_IP:3001/sse"
+      "type": "stdio",
+      "command": "node",
+      "args": ["mcp/src/index.js"]
     }
   }
 }

@@ -12,7 +12,7 @@ const MSG_BUFFER_SIZE = 50; // Nachrichten pro Chat im Puffer
 
 let sock = null;
 let ready = false;
-let logger = pino({ level: 'silent' });
+let logger = pino({ level: 'silent' }, process.stderr);
 
 /** Ring-Buffer: jid → Message[] */
 const messageBuffer = new Map();
@@ -32,7 +32,10 @@ async function connect() {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })),
     },
-    printQRInTerminal: true,
+    // WICHTIG: printQRInTerminal MUSS false sein im MCP-Modus.
+    // stdout ist für das MCP stdio-Protokoll reserviert.
+    // QR-Code einmalig via `node src/setup.js` scannen.
+    printQRInTerminal: false,
     logger: pino({ level: 'silent' }),
     generateHighQualityLinkPreview: false,
     syncFullHistory: false,
@@ -40,7 +43,15 @@ async function connect() {
 
   sock.ev.on('creds.update', saveCreds);
 
-  sock.ev.on('connection.update', ({ connection, lastDisconnect }) => {
+  sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+    if (qr) {
+      // Kein QR auf stdout! Hinweis auf setup.js schreiben.
+      process.stderr.write(
+        '\n[WhatsApp MCP] Keine gespeicherte Session gefunden.\n' +
+        '[WhatsApp MCP] Bitte zuerst ausführen: node mcp/src/setup.js\n\n'
+      );
+    }
+
     if (connection === 'close') {
       ready = false;
       const code = new Boom(lastDisconnect?.error)?.output?.statusCode;
@@ -48,13 +59,13 @@ async function connect() {
         logger.warn({ code }, 'Verbindung getrennt – verbinde neu...');
         setTimeout(() => connect(), 3000);
       } else {
-        logger.error('Ausgeloggt. Bitte mcp-auth/ löschen und neu starten.');
-        process.exit(1);
+        logger.error('Ausgeloggt. Bitte mcp-auth/ löschen und setup.js erneut ausführen.');
       }
     }
+
     if (connection === 'open') {
       ready = true;
-      logger.info('WhatsApp MCP-Client verbunden und bereit.');
+      logger.info('WhatsApp MCP-Client verbunden.');
     }
   });
 
@@ -97,7 +108,7 @@ export function isConnected() {
 }
 
 export function getSocket() {
-  if (!sock || !ready) throw new Error('WhatsApp ist nicht verbunden');
+  if (!sock || !ready) throw new Error('WhatsApp nicht verbunden. Läuft setup.js noch?');
   return sock;
 }
 
