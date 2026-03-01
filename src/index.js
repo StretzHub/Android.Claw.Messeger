@@ -7,6 +7,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
+import qrcode from 'qrcode-terminal';
 import { handleMessage } from './messageHandler.js';
 
 const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
@@ -24,7 +25,6 @@ async function startBot() {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })),
     },
-    printQRInTerminal: true,
     logger: pino({ level: 'silent' }),
     generateHighQualityLinkPreview: false,
     syncFullHistory: false,
@@ -36,7 +36,8 @@ async function startBot() {
   // Verbindungsstatus
   sock.ev.on('connection.update', async ({ connection, lastDisconnect, qr }) => {
     if (qr) {
-      logger.info('QR-Code erscheint oben. Bitte mit WhatsApp scannen.');
+      console.log('\nQR-Code – bitte mit WhatsApp scannen (Einstellungen → Verknüpfte Geräte):\n');
+      qrcode.generate(qr, { small: true });
     }
 
     if (connection === 'close') {

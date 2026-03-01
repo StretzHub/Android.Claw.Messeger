@@ -14,6 +14,7 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
+import qrcode from 'qrcode-terminal';
 
 const AUTH_FOLDER = './mcp-auth';
 
@@ -36,13 +37,17 @@ const sock = makeWASocket({
     creds: state.creds,
     keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })),
   },
-  printQRInTerminal: true, // hier OK – setup.js ist kein MCP-Prozess
   logger: pino({ level: 'silent' }),
 });
 
 sock.ev.on('creds.update', saveCreds);
 
-sock.ev.on('connection.update', ({ connection, lastDisconnect }) => {
+sock.ev.on('connection.update', ({ connection, lastDisconnect, qr }) => {
+  if (qr) {
+    console.log('\nQR-Code – bitte mit WhatsApp scannen:\n');
+    qrcode.generate(qr, { small: true });
+  }
+
   if (connection === 'open') {
     console.log('');
     console.log('✅ WhatsApp verbunden! Session gespeichert in mcp-auth/');
